@@ -67,8 +67,11 @@
 
     #sync { color: var(--label2); font-size: 12px; margin: -14px 0 18px; min-height: 15px; }
     #gate { padding: 16px; display: none; }
-    #gate input { width: 100%; font: inherit; font-size: 17px; padding: 10px 12px; margin: 10px 0 12px; border-radius: 10px;
-                  border: .5px solid var(--sep); background: var(--fill); color: var(--label); }
+    #gate #urlBox { display: none; }
+    #gate select { display: block; width: 100%; font: inherit; font-size: 17px; padding: 10px 12px; margin: 10px 0 12px; border-radius: 10px;
+                  border: .5px solid var(--sep); background: var(--fill); color: var(--label); text-align: left; text-align-last: left; }
+    #me { color: var(--label2); font-size: 13px; margin: -12px 0 16px; }
+    #me a { color: var(--blue); cursor: pointer; }
     #msg { text-align: center; font-size: 15px; min-height: 22px; padding: 0 8px; }
     .ok { color: var(--green); } .err { color: var(--red); }
   </style>
@@ -78,13 +81,14 @@
 <div class="wrap">
   <h1>Attendance</h1>
   <div id="today"></div>
+  <div id="me"></div>
   <div id="sync"></div>
 
   <div class="group" id="gate">
-    <div style="font-size:17px;font-weight:600">Access code</div>
-    <div style="font-size:13px;color:var(--label2);margin-top:2px">Enter it once. It is saved on this device.</div>
-    <input id="codeIn" type="password" autocomplete="off" autocapitalize="off" placeholder="Access code">
-    <button onclick="saveCode()">Save</button>
+    <div style="font-size:17px;font-weight:600">Who are you?</div>
+    <div style="font-size:13px;color:var(--label2);margin-top:2px">Pick your name once. It is saved on this device.</div>
+    <select id="whoSel"></select>
+    <button onclick="saveWho()">Continue</button>
   </div>
 
   <div class="header">Date</div>
@@ -117,10 +121,10 @@
 
 <script>
   // ====== SETTINGS ======
-  const API_URL = 'https://script.google.com/macros/s/AKfycbwXvWDDKwDTU7cQlxGDmiecLFcD-P5OoD0vifQbD8v6nukyTnZvDna8i2xsCvpb-f-8/exec';   // the .../exec link
+  const API_URL = 'https://script.google.com/macros/s/AKfycbwXvWDDKwDTU7cQlxGDmiecLFcD-P5OoD0vifQbD8v6nukyTnZvDna8i2xsCvpb-f-8/exec';
   const TZ = 'Asia/Singapore';
   // ======================
-  const LS_CODE = 'att_code', LS_CACHE = 'att_cache', LS_SEL = 'att_sel';
+  const LS_WHO = 'att_who', LS_CACHE = 'att_cache', LS_SEL = 'att_sel', LS_TEAM = 'att_team';
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
@@ -136,7 +140,7 @@
       .format(new Date()).replace(/^(\w+) /, '$1, ');
   }
   function saveCache(serverToday) {
-    store.set(LS_CACHE, JSON.stringify({ dates: data, serverToday: serverToday || '', savedAt: Date.now() }));
+    store.set(LS_CACHE, JSON.stringify({ who: store.get(LS_WHO), dates: data, serverToday: serverToday || '', savedAt: Date.now() }));
   }
   function setSync(t) { $('sync').textContent = t; }
   function clock() { return new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }).format(new Date()); }
@@ -156,42 +160,82 @@
       o.textContent = wd + d.label + (d.label === todayDate ? ' (today)' : '');
       sel.appendChild(o);
     });
-    let idx = data.findIndex(d => d.label === todayDate);     // opening the app always lands on today if it exists
+    let idx = data.findIndex(d => d.label === todayDate);
     if (idx < 0) idx = data.findIndex(d => d.label === keep);
     if (idx < 0) idx = 0;
     sel.value = idx;
     sel.disabled = !data.length;
     selLabel = data[idx] ? data[idx].label : null;
-    if (idx < 0 || !todayDate) showMsg('Today’s date isn’t in the sheet. Pick a date from the list.', false);
+    if (!todayDate) showMsg('Today’s date isn’t in the sheet. Pick a date from the list.', false);
     render();
   }
 
   function api(action, params) {
-    const q = new URLSearchParams(Object.assign({ action: action, token: store.get(LS_CODE) || '' }, params || {}));
+    const q = new URLSearchParams(Object.assign({ action: action, who: store.get(LS_WHO) || '' }, params || {}));
     return fetch(API_URL + '?' + q.toString()).then(r => r.json());
   }
 
+  function showMe() {
+    const who = store.get(LS_WHO);
+    const m = $('me');
+    m.textContent = '';
+    if (!who) return;
+    m.appendChild(document.createTextNode('Marking for ' + who + ' · '));
+    const a = document.createElement('a'); a.textContent = 'Not you?'; a.onclick = switchPerson;
+    m.appendChild(a);
+  }
+
+  function switchPerson() {
+    store.del(LS_WHO); store.del(LS_CACHE);
+    data = []; selLabel = null;
+    $('dateSel').innerHTML = ''; $('dateSel').disabled = true;
+    ['wk', 'full', 'sync', 'msg'].forEach(i => $(i).textContent = '');
+    $('tag').classList.remove('show');
+    showMe();
+    askWho();
+  }
+
+  // ----- first-time name picker -----
+  function fillTeam(names) {
+    const sel = $('whoSel');
+    sel.innerHTML = '';
+    const ph = document.createElement('option'); ph.value = ''; ph.textContent = 'Choose your name'; sel.appendChild(ph);
+    names.slice().sort((x, y) => x.localeCompare(y)).forEach(n => { const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o); });
+  }
+  function askWho() {
+    $('gate').style.display = 'block';
+    $('today').textContent = 'Today · ' + todayText();
+    let cached = null;
+    try { cached = JSON.parse(store.get(LS_TEAM) || 'null'); } catch (e) {}
+    if (cached && cached.length) fillTeam(cached);
+    setSync('Loading names…');
+    api('team').then(r => {
+      if (!r.ok) { showMsg(r.message, false); setSync(''); return; }
+      store.set(LS_TEAM, JSON.stringify(r.names));
+      fillTeam(r.names);
+      setSync('');
+    }).catch(e => setSync('Could not reach the sheet' + (e && e.message ? ' (' + e.message + ')' : '')));
+  }
+  function saveWho() {
+    const v = $('whoSel').value;
+    if (!v) return;
+    store.set(LS_WHO, v);
+    $('gate').style.display = 'none';
+    showMsg('', true);
+    showMe();
+    refresh();
+  }
+
   function refresh() {
-    if (!store.get(LS_CODE)) { showGate(); return; }
+    if (!store.get(LS_WHO)) { askWho(); return; }
     setSync(data.length ? 'Updating…' : 'Loading…');
     api('data').then(r => {
-      if (r.auth) { store.del(LS_CODE); showGate('That code was not accepted. Try again.'); setSync(''); return; }
+      if (r.unknownName) { store.del(LS_WHO); store.del(LS_CACHE); showMe(); askWho(); showMsg('Your name is no longer on the list. Pick it again.', false); return; }
       if (!r.ok) { showMsg(r.message, false); setSync(data.length ? 'Showing saved data' : ''); return; }
       applyData(r.dates, r.todayDate);
       saveCache(r.todayDate);
       setSync('Updated ' + clock());
-    }).catch(() => setSync(data.length ? 'Offline · showing saved data' : 'Could not reach the sheet. Check your connection.'));
-  }
-
-  function showGate(msg) { $('gate').style.display = 'block'; if (msg) showMsg(msg, false); }
-  function saveCode() {
-    const v = $('codeIn').value.trim();
-    if (!v) return;
-    store.set(LS_CODE, v);
-    $('gate').style.display = 'none';
-    $('codeIn').value = '';
-    showMsg('', true);
-    refresh();
+    }).catch(e => { const why = e && e.message ? ' (' + e.message + ')' : ''; setSync(data.length ? 'Offline · showing saved data' + why : 'Could not reach the sheet' + why); });
   }
 
   function current() { return data[$('dateSel').value]; }
@@ -239,24 +283,25 @@
     busy = true; showMsg('Saving…', true); $('msg').className = ''; render();
     const undo = msg => { d[key] = before; busy = false; showMsg(msg, false); render(); saveCache(); };
     api('mark', { date: d.label, session: session }).then(r => {
-      if (r.auth) { store.del(LS_CODE); undo('Access code rejected.'); showGate(); return; }
+      if (r.unknownName) { undo('Your name is no longer on the list.'); switchPerson(); return; }
       if (!r.ok) { undo(r.message); return; }
       busy = false; showMsg(r.message, true); render(); saveCache();
-    }).catch(() => undo('Could not reach the sheet. Nothing was saved.'));
+    }).catch(e => undo('Could not reach the sheet. Nothing was saved.' + (e && e.message ? ' (' + e.message + ')' : '')));
   }
 
   $('dateSel').onchange = onPick;
-  $('codeIn').addEventListener('keydown', e => { if (e.key === 'Enter') saveCode(); });
 
   // Open instantly from the last saved copy, then refresh in the background.
   (function start() {
+    showMe();
     try {
       const c = JSON.parse(store.get(LS_CACHE) || 'null');
-      if (c && c.dates && c.dates.length) { applyData(c.dates, c.serverToday); setSync('Saved copy · updating…'); }
+      if (c && c.who === store.get(LS_WHO) && c.dates && c.dates.length) { applyData(c.dates, c.serverToday); setSync('Saved copy · updating…'); }
       else $('today').textContent = 'Today · ' + todayText();
     } catch (e) {}
     refresh();
   })();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && store.get(LS_WHO)) refresh(); });
 </script>
 </body>
 </html>
