@@ -59,7 +59,6 @@
     .row .t { font-size: 17px; font-weight: 600; }
     .row .s { font-size: 13px; color: var(--label2); margin-top: 2px; }
     .row.done .s { color: var(--green); }
-    .undo { color: var(--blue); font-weight: 500; cursor: pointer; margin-left: 4px; -webkit-user-select: none; user-select: none; }
     button { font: inherit; font-size: 15px; font-weight: 600; color: #fff; background: var(--blue); border: 0;
              border-radius: 999px; padding: 9px 18px; min-width: 112px; transition: transform .1s, opacity .15s; }
     button:active { transform: scale(.96); opacity: .8; }
@@ -181,7 +180,7 @@
       applyData(r.dates, r.todayDate);
       saveCache(r.todayDate);
       setSync('Updated ' + clock());
-    }).catch(e => { const why = e && e.message ? ' (' + e.message + ')' : ''; setSync(data.length ? 'Offline · showing saved data' + why : 'Could not reach the sheet' + why); });
+    }).catch(() => setSync(data.length ? 'Offline · showing saved data' : 'Could not reach the sheet. Check your connection.'));
   }
 
   function showGate(msg) { $('gate').style.display = 'block'; if (msg) showMsg(msg, false); }
@@ -226,14 +225,7 @@
     b.classList.toggle('done', done);
     row.classList.toggle('done', done);
     b.textContent = done ? '✓ Attended' : 'Mark ' + name;
-    const sEl = row.querySelector('.s');
-    sEl.textContent = exists ? (status ? status : 'Not marked yet') : 'No column in sheet';
-    if (exists && done) {
-      const u = document.createElement('span');
-      u.className = 'undo'; u.textContent = '· Undo'; u.setAttribute('role', 'button');
-      u.onclick = () => undo(name);
-      sEl.appendChild(u);
-    }
+    row.querySelector('.s').textContent = exists ? (status ? status : 'Not marked yet') : 'No column in sheet';
   }
 
   function showMsg(text, ok) { const m = $('msg'); m.className = ok ? 'ok' : 'err'; m.textContent = text; }
@@ -243,7 +235,6 @@
     if (!d) return;
     const key = session === 'AM' ? 'amStatus' : 'pmStatus';
     const before = d[key];
-    if (before !== 'Attended') d[session === 'AM' ? 'amPrev' : 'pmPrev'] = before;
     d[key] = 'Attended';                       // show it instantly; undo below if the sheet says no
     busy = true; showMsg('Saving…', true); $('msg').className = ''; render();
     const undo = msg => { d[key] = before; busy = false; showMsg(msg, false); render(); saveCache(); };
@@ -251,23 +242,7 @@
       if (r.auth) { store.del(LS_CODE); undo('Access code rejected.'); showGate(); return; }
       if (!r.ok) { undo(r.message); return; }
       busy = false; showMsg(r.message, true); render(); saveCache();
-    }).catch(e => undo('Could not reach the sheet. Nothing was saved.' + (e && e.message ? ' (' + e.message + ')' : '')));
-  }
-
-  function undo(session) {
-    const d = current();
-    if (!d || busy) return;
-    const key = session === 'AM' ? 'amStatus' : 'pmStatus';
-    const before = d[key];
-    const target = d[session === 'AM' ? 'amPrev' : 'pmPrev'] || '';   // what it held before you marked it, else blank
-    d[key] = target;
-    busy = true; showMsg('Undoing…', true); $('msg').className = ''; render();
-    const back = msg => { d[key] = before; busy = false; showMsg(msg, false); render(); saveCache(); };
-    api('set', { date: d.label, session: session, value: target }).then(r => {
-      if (r.auth) { store.del(LS_CODE); back('Access code rejected.'); showGate(); return; }
-      if (!r.ok) { back(r.message); return; }
-      busy = false; showMsg(r.message, true); render(); saveCache();
-    }).catch(e => back('Could not reach the sheet. Nothing was changed.' + (e && e.message ? ' (' + e.message + ')' : '')));
+    }).catch(() => undo('Could not reach the sheet. Nothing was saved.'));
   }
 
   $('dateSel').onchange = onPick;
@@ -282,10 +257,6 @@
     } catch (e) {}
     refresh();
   })();
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
-</script>
-</body>
-</html>
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 </script>
 </body>
