@@ -117,7 +117,7 @@
 
 <script>
   // ====== SETTINGS ======
-  const API_URL = 'https://script.google.com/macros/s/AKfycbwXvWDDKwDTU7cQlxGDmiecLFcD-P5OoD0vifQbD8v6nukyTnZvDna8i2xsCvpb-f-8/exec';   // the .../exec link
+  const API_URL = 'https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnRLLWRIwmuIu-WV7Tq-vYDcUDT1Mfti9utaFv5iHVCQumCzWR2TNj24Ar1WlFtB_OdhchdECSqoiILdkTWJR77jGhjv0YfrAl8oDT6WF_k22eU9N7t2SUlaw4Xbf228VRsOJ_bvLRNu0BjYla_b2jP0BjJxGd-wBxQOSeUXt9MSzlw0eCrJRjxgkmpEdtZstOzwCUi8MRFzGLz3fEpYw6EPUKphYHvjQ7B2Kqg0TwBIHLv-3Lf5w7litOMBWFEC7u6R2CwannIhBk3whG-YjJrn6rXhBA&lib=M9ITgrHmHlKRMZ_03_CTqSHVxtKGoQKXk';   // the .../exec link
   const TZ = 'Asia/Singapore';
   // ======================
   const LS_CODE = 'att_code', LS_CACHE = 'att_cache', LS_SEL = 'att_sel';
@@ -180,7 +180,7 @@
       applyData(r.dates, r.todayDate);
       saveCache(r.todayDate);
       setSync('Updated ' + clock());
-    }).catch(() => setSync(data.length ? 'Offline · showing saved data' : 'Could not reach the sheet. Check your connection.'));
+    }).catch(e => { const why = e && e.message ? ' (' + e.message + ')' : ''; setSync(data.length ? 'Offline · showing saved data' + why : 'Could not reach the sheet' + why); });
   }
 
   function showGate(msg) { $('gate').style.display = 'block'; if (msg) showMsg(msg, false); }
@@ -242,7 +242,7 @@
       if (r.auth) { store.del(LS_CODE); undo('Access code rejected.'); showGate(); return; }
       if (!r.ok) { undo(r.message); return; }
       busy = false; showMsg(r.message, true); render(); saveCache();
-    }).catch(() => undo('Could not reach the sheet. Nothing was saved.'));
+    }).catch(e => undo('Could not reach the sheet. Nothing was saved.' + (e && e.message ? ' (' + e.message + ')' : '')));
   }
 
   $('dateSel').onchange = onPick;
